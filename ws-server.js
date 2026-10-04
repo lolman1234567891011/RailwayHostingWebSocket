@@ -46,12 +46,16 @@ wss.on('connection', (ws) => {
         rooms[roomCode].clients.add(ws);
         if (!rooms[roomCode].players.includes(playerName)) rooms[roomCode].players.push(playerName);
         broadcast(roomCode, { type: 'players', players: rooms[roomCode].players });
+        const R = rooms[roomCode]; // late joiners / reconnects catch up instead of hanging on the waiting room
+        if (R.host) ws.send(JSON.stringify({ type: 'host_announce', name: R.host }));
+        if (R.quiz && Date.now() - R.quizAt < 10 * 60000) ws.send(JSON.stringify({ type: 'quiz_start', quiz: R.quiz }));
         return;
       }
       if (msg.type === 'chat') { broadcast(roomCode, { type: 'chat', username: msg.username, message: msg.message }); return; }
-      if (msg.type === 'quiz_start') { broadcast(roomCode, { type: 'quiz_start', quiz: msg.quiz }); return; }
+      if (msg.type === 'quiz_start') { if (rooms[roomCode]) { rooms[roomCode].quiz = msg.quiz; rooms[roomCode].quizAt = Date.now(); } broadcast(roomCode, { type: 'quiz_start', quiz: msg.quiz }); return; }
       if (msg.type === 'player_done') { broadcast(roomCode, { type: 'player_done', name: msg.name }); return; }
       // CO-OP BOSS BATTLE (and future types): room-scoped relay, host client is authoritative.
+      if (msg.type === 'host_announce' && rooms[roomCode]) rooms[roomCode].host = msg.name;
       broadcast(roomCode, msg);
     } catch (e) {
       console.error('Parse error:', e);
